@@ -1,28 +1,47 @@
 # Onda
 
-> A peer-to-peer protocol for personal AIs. No central servers. Each person runs their own AI node; nodes find each other and trade tasks directly. — [Manifesto: projectonda.com](https://projectonda.com)
+![Tests](https://img.shields.io/badge/tests-59%20passing-green)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![Status](https://img.shields.io/badge/status-early%20development-orange)
+
+> A peer-to-peer protocol for personal AIs. No central servers. Each person runs their own AI node; nodes find each other and trade tasks directly. — [Manifesto in italiano and English: projectonda.com](https://projectonda.com)
 
 Onda is the **reference implementation**, in Python. It is intentionally readable and deliberately small. Every behavioral switch is a flag (`OndaSettings`); per project policy, code is *added*, not deleted.
 
-* **v0.1** (default, `transport_mode=v1`): single libp2p host with TCP + manual bootstrap + mDNS. The minimum viable thing.
-* **v0.2** (`transport_mode=v2`): multi-transport stack — libp2p (Internet & LAN) + BLE GATT + Wi-Fi Direct + store-and-forward via proximity, all behind a `TransportManager` with priority + fallback. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/network-architecture.md`](docs/network-architecture.md).
+## Current versions
+
+**v0.1** (default, `transport_mode=v1`): single libp2p host with TCP + manual bootstrap + mDNS. The minimum viable thing — two nodes find each other on a LAN, exchange a signed task, and respond using local LLM inference.
+
+**v0.2** (`transport_mode=v2`): multi-transport stack with priority-based fallback, behind a `TransportManager`. Adds:
+
+- **Internet** — libp2p TCP with manual bootstrap
+- **LAN** — libp2p + Zeroconf mDNS (works even when the internet is down)
+- **BLE GATT** — Bluetooth Low Energy with custom GATT service (works with no Wi-Fi at all)
+- **Wi-Fi Direct** — peer-to-peer hotspot discovery (Linux/Windows; macOS not supported)
+- **Proximity / store-and-forward** — sealed end-to-end carriers passed between nodes that physically meet, for nodes that never share a network ("sneakernet")
+
+See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/network-architecture.md`](docs/network-architecture.md) for the full v0.2 details.
 
 ## What you get in v0.1
 
 - A long-lived **Onda node** (`onda start`) that
   - owns a `did:key` Ed25519 identity persisted at `~/.onda/<name>/identity.json`,
   - speaks the Onda wire protocol (`/onda/1.0.0`) over [py-libp2p](https://github.com/libp2p/py-libp2p),
-  - announces / discovers peers on the local network via mDNS (Zeroconf),
+  - announces and discovers peers on the local network via mDNS (Zeroconf),
   - accepts manual bootstrap multiaddrs for remote peers,
   - serves a local IPC socket so you can drive it from the CLI.
 - A **CLI** (`onda ask`, `onda remember`, `onda peers`, `onda recv`, `onda info`) that talks to the running node over the IPC socket.
 - A **JSON-LD-shaped envelope** (`@context`, `@type`, `from`, `to`, `body`, `signature`) for every inter-node message, signed with the sender's DID key. Receivers verify the signature *before* doing anything else.
 - An **opt-in NaCl-box (X25519)** layer for end-to-end payload encryption between specific peers, on top of libp2p's Noise channel.
-- A **local SQLite memory** so a node can answer questions using its owner's private knowledge — without that knowledge ever leaving the node.
+- A **local SQLite memory** so a node can answer questions using its owner's private knowledge, without that knowledge ever leaving the node.
 
 Out of scope for v0.1 (explicitly): web UI, multi-hop routing, persistent peer discovery beyond mDNS+bootstrap, federated learning, cross-node sharded memory, auth beyond DID signatures.
 
 ## Architecture
+
+<details>
+<summary>Click to expand the system diagram</summary>
 
 ```
                     Person A                                                                Person B
@@ -61,6 +80,8 @@ Out of scope for v0.1 (explicitly): web UI, multi-hop routing, persistent peer d
     "body":{"prompt":"Come si coltiva il pomodoro a Mazara del Vallo?"},
     "signature":"…","encrypted":false}
 ```
+
+</details>
 
 ## Installation
 
@@ -161,12 +182,16 @@ All knobs live in `OndaSettings` (`src/onda/config.py`). Override via flag, env 
 | `--encrypt`                   | `ONDA_ENABLE_ENCRYPTION`  | `false`        |
 | `--llm-backend`               | `ONDA_LLM_BACKEND`        | `ollama`       |
 | `--ollama-model`              | `ONDA_OLLAMA_MODEL`       | `llama3.2:3b`  |
+| `--transport-mode`            | `ONDA_TRANSPORT_MODE`     | `v1`           |
+| `--enable-bluetooth`          | `ONDA_ENABLE_BLUETOOTH`   | `false`        |
+| `--enable-wifi-direct`        | `ONDA_ENABLE_WIFI_DIRECT` | `false`        |
+| `--enable-proximity`          | `ONDA_ENABLE_PROXIMITY`   | `false`        |
 
 ## Security model
 
 - **Every** inter-node message is Ed25519-signed; receivers verify before *any* other processing. A peer that cannot produce a valid signature is silent to the rest of the network.
 - The DID method is `did:key`, which is **self-certifying** — the public key is encoded in the DID string, so there is no resolution step and no chance of accepting a key vended by a server.
-- libp2p's Noise handshake gives transport-level confidentiality. The optional `--encrypt` flag adds NaCl-box on top, useful when traversing untrusted relays (a v0.2 use case shipped now per the ADD-ONLY discipline).
+- libp2p's Noise handshake gives transport-level confidentiality. The optional `--encrypt` flag adds NaCl-box (X25519) on top, useful when traversing untrusted relays (added in v0.2, available behind a flag).
 - `~/.onda/<name>/identity.json` holds the signing seed. It is written `0o600`. Never commit it.
 
 ## Layout
@@ -179,14 +204,16 @@ onda/
 │   ├── protocol.py     Envelope + body schemas, sign/verify in build/verify
 │   ├── memory.py       SQLite knowledge store
 │   ├── llm.py          Ollama HTTP + echo backend
-│   ├── transport.py    py-libp2p host + zeroconf mDNS
+│   ├── transport.py    py-libp2p host + zeroconf mDNS (v0.1, intact)
 │   ├── ipc.py          Unix-socket JSON-RPC (CLI ↔ daemon)
 │   ├── node.py         glues identity + memory + llm + transport + ipc
 │   ├── cli.py          Typer commands
-│   └── config.py       pydantic-settings
-├── tests/              protocol, identity, memory, 2-node integration
-├── examples/demo_two_nodes.sh
-├── cli.py              spec-literal `python cli.py …` shim
+│   ├── config.py       pydantic-settings
+│   ├── network/        TransportManager + base ABC (v0.2)
+│   └── transports/     internet, lan, bluetooth, wifi_direct, proximity (v0.2)
+├── tests/              protocol, identity, memory, transport, manager (59 tests)
+├── examples/           demo scripts
+├── docs/               network architecture, transports, Pi setup
 ├── pyproject.toml
 ├── Makefile
 └── LICENSE             (Apache 2.0)
@@ -199,6 +226,21 @@ make test         # unit + integration (echo LLM, no Ollama needed)
 make lint         # ruff
 make typecheck    # mypy strict
 ```
+
+## Roadmap
+
+- **v0.3** — Web UI served on localhost. The CLI is great for developers; this is the first interface a non-developer can use. Accessible from the same machine or from a smartphone on the LAN.
+- **v0.4** — Persistent peer discovery beyond mDNS and manual bootstrap. Probably a DHT-based approach or rendezvous through trusted introducers.
+- **v0.5** — Multi-hop routing across the federated network. Onion-style anonymity is a longer-term consideration, not v0.5.
+- **v0.6+** — Federated learning across nodes, cross-node sharded memory (Shamir secret sharing), mobile clients (Android first, then iOS within platform constraints).
+
+See [`CHANGELOG.md`](CHANGELOG.md) for what shipped and when.
+
+## Contributing
+
+Issues and pull requests are welcome. The project is in an early stage — expect rough edges, unstable interfaces, and missing documentation. If you want to work on something non-trivial, open an issue first so we can discuss the direction.
+
+For a sense of the project's philosophy, please read the [manifesto](https://projectonda.com) before contributing. Onda exists for specific reasons, and contributions that drift from those reasons will be respectfully declined.
 
 ## License
 
