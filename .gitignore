@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+
+.venv/
+venv/
+env/
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+build/
+dist/
+
+# Local node state — never commit identities or memory of a real node.
+.onda/
+
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Claude Code per-project state (settings.local.json, etc.). User-specific.
+.claude/

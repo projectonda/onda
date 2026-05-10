@@ -1,0 +1,106 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onda"
+version = "0.1.0"
+description = "Onda v0.1 — peer-to-peer protocol for personal AIs (reference implementation)"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "Project Onda", email = "hello@projectonda.com" }]
+keywords = ["p2p", "libp2p", "did", "personal-ai", "agent-network-protocol"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications",
+]
+
+dependencies = [
+  # P2P transport. py-libp2p is alpha but is the stack we commit to.
+  "libp2p>=0.2.4",
+  # Reliable mDNS via the canonical Zeroconf library; py-libp2p's built-in
+  # mDNS has been historically flaky, so we drive discovery ourselves.
+  "zeroconf>=0.131",
+  # Crypto: PyNaCl gives us Ed25519 (signing) AND X25519 (NaCl box for the
+  # opt-in encryption layer) from a single, vetted dependency.
+  "pynacl>=1.5",
+  # Multibase / multicodec helpers for encoding did:key strings.
+  "base58>=2.1",
+  # CLI framework. Typer is a thin wrapper over Click with type hints.
+  "typer>=0.12",
+  # HTTP client used to talk to the local Ollama daemon.
+  "httpx>=0.27",
+  # Structured logging — JSON in production, console-pretty in dev.
+  "structlog>=24.1",
+  # Settings and validation, declared as a v0.1 invariant in the spec.
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+# Hardware-dependent transports. Optional so that `pip install onda` on a
+# server without Bluetooth doesn't fail; the transports degrade with
+# is_available() checks at runtime.
+# `bleak` provides BLE central (client) operations cross-platform.
+# `bless` provides the BLE peripheral (GATT server) role on top of bleak.
+# A node needs BOTH roles concurrently to advertise its Onda service AND
+# scan/connect to peers, so we ship them together when the user opts into
+# the `ble` extra.
+ble = ["bleak>=0.21", "bless>=0.2.6"]
+wifi-direct = ["pywifi>=1.1.12"]
+all-transports = ["bleak>=0.21", "bless>=0.2.6", "pywifi>=1.1.12"]
+
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-trio>=0.8",
+  "pytest-timeout>=2.3",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "bleak>=0.21",
+  "bless>=0.2.6",
+  "pywifi>=1.1.12",
+]
+
+[project.scripts]
+# Installed entry point; in addition we keep a literal `cli.py` shim at the
+# repo root so the spec's `python cli.py …` invocation works verbatim.
+onda = "onda.cli:app"
+
+[project.urls]
+Homepage = "https://projectonda.com"
+Manifesto = "https://projectonda.com"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onda"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# strict mode means pytest-asyncio only handles tests with @pytest.mark.asyncio.
+# Without this, async tests marked @pytest.mark.trio get yanked into the
+# asyncio runner and fail. We don't actually have any asyncio tests in the
+# project — trio is the supported async backend.
+asyncio_mode = "strict"
+trio_mode = "true"
+timeout = 60
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+ignore_missing_imports = true
