@@ -246,4 +246,4 @@ For a sense of the project's philosophy, please read the [manifesto](https://pro
 
 Apache License 2.0. See [LICENSE](LICENSE).
 
-The Apache 2.0 license gives explicit patent grants from contributors and is more friendly to downstream commercial integration than MIT — useful for a protocol that aims to be implemented by third parties (browsers, mobile apps, embedded devices) without legal friction.
+The Apache 2.0 license gives explicit patent grants from contributors and is more friendly to downstream commercial integration than MIT; useful for a protocol that aims to be implemented by third parties (browsers, mobile apps, embedded devices) without legal friction.
